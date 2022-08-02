@@ -38,11 +38,9 @@ def find_possible_malloc_issues(c=None):
         if m_arg.type != 'unk':
             continue
 
-        is_ari = du.is_arithmetic_expression(
-            m_arg.val,
-            only_these=[cot_add])
-
-        if is_ari:
+        if is_ari := du.is_arithmetic_expression(
+            m_arg.val, only_these=[cot_add]
+        ):
             # Now, there are many ways to skin a cat...
             # we'll use the following on this example.
             # Assuming ``len + <number>`` -> ``len``

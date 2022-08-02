@@ -15,7 +15,7 @@ def calls_in_putty():
     calls about selected functions
     """
 
-    calls_d = {
+    return {
         # co (from c.calls)
         # k: co.ea
         # v: dict of 'call_ea' and 'name'
@@ -41,15 +41,13 @@ def calls_in_putty():
         # Insert additional functions here
     }
 
-    return calls_d
-
 
 @pytest.fixture
 def locals_in_putty():
     """Hard-coded information regarding local variables
     """
 
-    locals_d = {
+    return {
         # k: index
         # v: dict of local properties
         0x14007DA84: {
@@ -81,10 +79,8 @@ def locals_in_putty():
             32: {'name': 'v32', 'size': 8, 'type_name': '__int64'},
             33: {'name': 'v33', 'size': 8, 'type_name': '__int64'},
             34: {'name': 'v34', 'size': 8, 'type_name': '__int64'},
-            35: {'name': 'v35', 'size': 8, 'type_name': '__int64'}
+            35: {'name': 'v35', 'size': 8, 'type_name': '__int64'},
         },
         # NOTE:
         # Insert additional functions here
     }
-
-    return locals_d

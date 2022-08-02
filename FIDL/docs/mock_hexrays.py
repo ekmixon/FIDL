@@ -28,7 +28,7 @@ def main():
         f.write("\n\nm=mock.Mock()\n")
         for name in m_consts:
             value = getattr(ih, name)
-            f.write("m.{} = {}\n".format(name, value))
+            f.write(f"m.{name} = {value}\n")
 
     print("Done.")
 

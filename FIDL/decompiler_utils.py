@@ -196,11 +196,8 @@ class cImporter:
         nimps = get_import_module_qty()
 
         for i in xrange(0, nimps):
-            name = get_import_module_name(i)
-            if not name:
-                continue
-
-            enum_import_names(i, self._imp_cb)
+            if name := get_import_module_name(i):
+                enum_import_names(i, self._imp_cb)
 
     def get_imports_info(self):
         self._find_imports_info()
@@ -260,12 +257,7 @@ class BBGraph(object):
         """It returns the _BasicBlock_ containing ``ea`` or None
         """
 
-        for bb in self.f:
-            # Remember that bb.endEA is bb.startEA of the next one!
-            if ea >= bb.startEA and ea < bb.endEA:
-                return bb
-
-        return None
+        return next((bb for bb in self.f if ea >= bb.startEA and ea < bb.endEA), None)
 
     def get_node(self, addr):
         """Given a function's address, returns the basic block (address) that \
@@ -277,15 +269,10 @@ class BBGraph(object):
         :rtype: int
         """
 
-        node_addr = None
-
-        for start, end in self.bb_list:
-            if addr >= start and addr < end:
-                # The address is within this basic block
-                node_addr = start
-                break
-
-        return node_addr
+        return next(
+            (start for start, end in self.bb_list if addr >= start and addr < end),
+            None,
+        )
 
     def find_connected_paths(self, bb_start, bb_end, co=10):
         """Leverages NetworkX to find all connected paths
@@ -320,15 +307,12 @@ class BBGraph(object):
         _bb_end = self._get_block_from_ea(bb_end).startEA
 
         if _bb_start in bbl and _bb_end in bbl:
-            paths = nx.all_simple_paths(
-                g,
-                source=_bb_start,
-                target=_bb_end,
-                cutoff=co)
-            return paths
-        else:
-            print('[!] find_connected_paths: check bb_start, bb_end parameters')
-            return None
+            return nx.all_simple_paths(
+                g, source=_bb_start, target=_bb_end, cutoff=co
+            )
+
+        print('[!] find_connected_paths: check bb_start, bb_end parameters')
+        return None
 
 
 # ===========================================================
@@ -403,20 +387,14 @@ def map_line2node(cfunc, line2citem):
             except IndexError as e:
                 continue
 
-            # find the graph node (eg, basic block) that generated this citem
-            node_addr = bb_graph.get_node(address)
+            if node_addr := bb_graph.get_node(address):
+                #
+                # we made it this far, so we must have found a node that contains
+                # this citem. save the computed node_id to the list of of known
+                # nodes we have associated with this line of text
+                #
 
-            # address not mapped to a node... weird. continue to the next citem
-            if not node_addr:
-                continue
-
-            #
-            # we made it this far, so we must have found a node that contains
-            # this citem. save the computed node_id to the list of of known
-            # nodes we have associated with this line of text
-            #
-
-            nodes.add(node_addr)
+                nodes.add(node_addr)
 
         #
         # finally, save the completed list of node ids as identified for this
@@ -520,10 +498,7 @@ def citem2higher(citem):
     :type citem: :class:``citem``
     """
 
-    if citem.is_expr():
-        return citem.cexpr
-
-    return citem.cinsn
+    return citem.cexpr if citem.is_expr() else citem.cinsn
 
 
 # ===========================================================
@@ -614,31 +589,27 @@ class my_var_t:
             self.pointed_type = tif.get_pointed_object() or None
 
         # Ex: struct _SYSTEMTIME st -> _SYSTEMTIME
-        if self.is_pointer:
-            _tif = self.pointed_type
-        else:
-            _tif = tif
-
+        _tif = self.pointed_type if self.is_pointer else tif
         self.complex_type = _tif.get_type_name() or ""
 
     def __repr__(self):
-        print("Name: {}".format(self.name))
-        print("  Type name: {}".format(self.type_name))
-        print("  Size: {}".format(self.size))
+        print(f"Name: {self.name}")
+        print(f"  Type name: {self.type_name}")
+        print(f"  Size: {self.size}")
 
         # Optional stuff (not all vars have this)
         if self.array_type:
-            print("  Array type: {}".format(self.array_type))
-            print("  Array element size: {}".format(self.element_size))
-            print("  Array length: {}".format(self.array_len))
+            print(f"  Array type: {self.array_type}")
+            print(f"  Array element size: {self.element_size}")
+            print(f"  Array length: {self.array_len}")
 
         if self.complex_type:
-            print("  Complex type: {}".format(self.complex_type))
+            print(f"  Complex type: {self.complex_type}")
 
         # At a first glance, this may seem odd. It is correct.
-        pointed_type_s = "{}".format(self.pointed_type)
+        pointed_type_s = f"{self.pointed_type}"
         if len(pointed_type_s) and pointed_type_s != 'None':
-            print("  Pointed object: {}".format(pointed_type_s))
+            print(f"  Pointed object: {pointed_type_s}")
 
         return ""
 
@@ -656,9 +627,7 @@ def get_return_type(cf=None):
         raise ValueError
 
     ty = cf.type  # tinfo_t (entire prototype)
-    ti = ty.get_rettype()  # tinfo_t (return value)
-
-    return ti
+    return ty.get_rettype()
 
 
 # ===========================================================
@@ -776,7 +745,7 @@ def ref2var(ref, c=None, cf=None):
     if not c and not cf:
         raise RuntimeError('Need c or cf parameters. None was passed to ref2var')
 
-    if not cf and c:
+    if not cf:
         cf = c.cf
 
     return cf.lvars[ref.v.idx]
@@ -806,12 +775,7 @@ def is_arithmetic_expression(cex, only_these=[]):
     _x = cex.x
     _y = cex.y
 
-    for e in (_x, _y):
-        # e: left / right hand side of the comparison
-        if e and e.op in interesting_ops:
-            return True
-
-    return False
+    return any(e and e.op in interesting_ops for e in (_x, _y))
 
 
 def is_binary_truncation(cex):
@@ -843,17 +807,11 @@ def is_binary_truncation(cex):
 # is __way__ more legible...
 # ============================================================
 def is_array_indexing(ins):
-    if ins.op == cot_idx:
-        return True
-
-    return False
+    return ins.op == cot_idx
 
 
 def is_cast(ins):
-    if ins.op == cot_cast:
-        return True
-
-    return False
+    return ins.op == cot_cast
 
 
 def decast(ins):
@@ -867,34 +825,22 @@ def decast(ins):
 
 
 def is_asg(ins):
-    if ins.op in expr_assignments.keys():
-        return True
-
-    return False
+    return ins.op in expr_assignments.keys()
 
 
 def is_call(ins):
-    if ins.op == cot_call:
-        return True
-
-    return False
+    return ins.op == cot_call
 
 
 def is_helper(ins):
     """Helpers are IDA macros,
        e.g. __ROR__ or LOBYTE
     """
-    if ins.op == cot_helper:
-        return True
-
-    return False
+    return ins.op == cot_helper
 
 
 def is_ref(ins):
-    if ins.op == cot_ref:
-        return True
-
-    return False
+    return ins.op == cot_ref
 
 
 def ref_to(ins):
@@ -905,10 +851,7 @@ def ref_to(ins):
 
 
 def is_ptr(ins):
-    if ins.op == cot_ptr:
-        return True
-
-    return False
+    return ins.op == cot_ptr
 
 
 def points_to(ins):
@@ -920,10 +863,7 @@ def points_to(ins):
 
 def is_number(ins):
     """Convenience wrapper"""
-    if ins.op == cot_num:
-        return True
-
-    return False
+    return ins.op == cot_num
 
 
 def num_value(ins):
@@ -940,24 +880,15 @@ def num_value(ins):
 
 def is_string(ins):
     """Convenience wrapper"""
-    if ins.is_cstr():
-        return True
-
-    return False
+    return bool(ins.is_cstr())
 
 def is_member_pointer(ins):
     """Convenience wrapper"""
-    if ins.op == cot_memptr:
-        return True
-
-    return False
+    return ins.op == cot_memptr
 
 def is_struct_member(ins):
     """Convenience wrapper"""
-    if ins.op == cot_memref:
-        return True
-
-    return False
+    return ins.op == cot_memref
 
 def member_info(ins):
     """Returns info about a structure member
@@ -966,14 +897,12 @@ def member_info(ins):
     :param ins: :class:`cexpr_t` or :class:`insn_t`
     """
 
-    m_info = {
+    return {
         'type_name': str(ins.type),
         'offset': ins.m,
         'size': ins.type.get_size(),
-        'struct_var_idx': ins.x.v.idx
+        'struct_var_idx': ins.x.v.idx,
     }
-
-    return m_info
 
 def string_value(ins):
     """Gets the string corresponding to ``ins``
@@ -1008,10 +937,7 @@ def is_var(ins):
     between reference and variable
     """
 
-    if ins.op == cot_var:
-        return True
-
-    return False
+    return ins.op == cot_var
 
 
 def is_global_var(ins):
@@ -1024,12 +950,7 @@ def is_global_var(ins):
     :rtype: bool
     """
 
-    if ins.op == cot_obj:
-        if not ins.is_cstr():
-            if ins.obj_ea > 0:
-                return True
-
-    return False
+    return ins.op == cot_obj and not ins.is_cstr() and ins.obj_ea > 0
 
 
 def value_of_global(ins):
@@ -1043,17 +964,11 @@ def value_of_global(ins):
 
 
 def is_if(ins):
-    if ins.op == cit_if:
-        return True
-
-    return False
+    return ins.op == cit_if
 
 
 def is_return(ins):
-    if ins.op == cit_return:
-        return True
-
-    return False
+    return ins.op == cit_return
 
 
 # ===========================================================
@@ -1098,7 +1013,7 @@ def dump_pseudocode(ea=0):
 
     ps = cf.pseudocode
     for idx, sline in enumerate(ps):
-        print("[{}] {}".format(idx, tag_remove(sline.line)))
+        print(f"[{idx}] {tag_remove(sline.line)}")
 
 
 def dump_lvars(ea=0):
@@ -1166,24 +1081,16 @@ def all_paths_between(c, start_node=None, end_node=None, co=40):
     :rtype: list
     """
 
-    if not start_node:
-        start_index = min(c.i_cfg.nodes)
-    else:
-        start_index = c.node2index[start_node]
-
+    start_index = c.node2index[start_node] if start_node else min(c.i_cfg.nodes)
     # Use the node with the highest index
     # as default value
-    if not end_node:
-        node_indexes = [n.index for n in c.g.nodes()]
-        # higher value is usually
-        # the last return node
-        if node_indexes:
-            end_index = max(node_indexes)
-        else:
-            end_index = start_index
-    else:
+    if end_node:
         end_index = c.node2index[end_node]
 
+    elif node_indexes := [n.index for n in c.g.nodes()]:
+        end_index = max(node_indexes)
+    else:
+        end_index = start_index
     # Find all *simple* paths
     # These paths are lists of citem indexes
     try:
@@ -1203,8 +1110,7 @@ def all_paths_between(c, start_node=None, end_node=None, co=40):
     # before yielding back to the caller
     # ------------------------------------------------
     for p_i in all_paths_i:
-        p_nodes = [c.index2node[x] for x in p_i]
-        yield p_nodes
+        yield [c.index2node[x] for x in p_i]
 
 
 def display_node(c=None, node=None, color=None):
@@ -1236,7 +1142,7 @@ def display_node(c=None, node=None, color=None):
     except KeyError as e:
         print("display_node :: Error @ citem2line")
 
-    print("{}: {}".format(line + 1, code[line + 1]))
+    print(f"{line + 1}: {code[line + 1]}")
 
     # Paint it!
     pseudo[line].bgcolor = color
@@ -1280,7 +1186,7 @@ def display_path(cf=None, path=None, color=None):
         except KeyError as e:
             continue
 
-        print("{}: {}".format(line + 1, code[line + 1]))
+        print(f"{line + 1}: {code[line + 1]}")
         path_lines.append(line + 1)
 
         # Paint it!
@@ -1355,23 +1261,22 @@ def display_all_calls_to(func_name):
 
     f_ea = get_name_ea_simple(func_name)
     if f_ea == BADADDR:
-        print("Can not find {}".format(func_name))
+        print(f"Can not find {func_name}")
         return None
 
     # We'll save the results and display all at the end,
     # otherwise the output gets clobbered with IDA's logging
-    lines = []
-    for ref in XrefsTo(f_ea, True):
-        if not ref.iscode:
-            continue
-
-        lines.append(display_line_at(ref.frm, silent=True))
+    lines = [
+        display_line_at(ref.frm, silent=True)
+        for ref in XrefsTo(f_ea, True)
+        if ref.iscode
+    ]
 
     print("==================================================")
-    print("= All calls to {}".format(func_name))
+    print(f"= All calls to {func_name}")
     print("==================================================")
     for line in lines:
-        print("- {}".format(line))
+        print(f"- {line}")
 
 
 # ===========================================================
@@ -1545,17 +1450,14 @@ class controlFlowinator:
                 dprint("More than one successor!")
                 dprint("Check this out")
 
-            if succs:
-                succ = succs[0]
-            else:
-                succ = None
+            succ = succs[0] if succs else None
         except nx.NetworkXError as e:
-            dprint("_get_block_successor: {}".format(e))
+            dprint(f"_get_block_successor: {e}")
             succ = None
 
         if not succ:
             dprint("Block: {:#08x}".format(block.ea))
-            dprint(" succs: {}".format(succs))
+            dprint(f" succs: {succs}")
             dprint(" No successor! Take a look into this!")
 
         return succ
@@ -1566,8 +1468,7 @@ class controlFlowinator:
         new_blocks = []
 
         iblock = {'ithen': block.cif.ithen}
-        ielse = block.cif.ielse
-        if ielse:
+        if ielse := block.cif.ielse:
             iblock['ielse'] = ielse
 
         # 1. Find and save the original successor
@@ -1591,9 +1492,7 @@ class controlFlowinator:
             # Calculate new blocks to expand
             new_blocks += self._get_blocks_to_expand(branch, block.succ)
 
-            # Stitch the instructions together
-            if_edges = self._stitch_together(branch)
-            if if_edges:
+            if if_edges := self._stitch_together(branch):
                 self.i_cfg.add_edges_from(if_edges)
 
             # The cblock has one ins at least
@@ -1611,9 +1510,8 @@ class controlFlowinator:
 
             # Connect to the orphaned successor
             # Unless it is a return, etc.
-            if succ:
-                if last.op not in (cit_return, cit_break):
-                    self.i_cfg.add_edge(last.index, succ)
+            if succ and last.op not in (cit_return, cit_break):
+                self.i_cfg.add_edge(last.index, succ)
 
         return new_blocks
 
@@ -1638,7 +1536,7 @@ class controlFlowinator:
             case_block = case.cblock
 
             u = block
-            case_ins = [i for i in case_block]
+            case_ins = list(case_block)
 
             new_blocks += self._get_blocks_to_expand(case_ins)
 
@@ -1673,9 +1571,7 @@ class controlFlowinator:
         # Calculate new blocks to expand
         new_blocks = self._get_blocks_to_expand(do_block, succ)
 
-        # Stitch the instructions together
-        do_edges = self._stitch_together(do_block)
-        if do_edges:
+        if do_edges := self._stitch_together(do_block):
             self.i_cfg.add_edges_from(do_edges)
 
         # The cblock has one ins at least
@@ -1715,9 +1611,7 @@ class controlFlowinator:
         # Calculate new blocks to expand
         new_blocks = self._get_blocks_to_expand(while_block, succ)
 
-        # Stitch the instructions together
-        while_edges = self._stitch_together(while_block)
-        if while_edges:
+        if while_edges := self._stitch_together(while_block):
             self.i_cfg.add_edges_from(while_edges)
 
         # The cblock has one ins at least
@@ -1757,10 +1651,7 @@ class controlFlowinator:
         # Calculate new blocks to expand
         new_blocks = self._get_blocks_to_expand(for_block, succ)
 
-        # Stitch the instructions together
-        for_edges = self._stitch_together(for_block)
-
-        if for_edges:
+        if for_edges := self._stitch_together(for_block):
             self.i_cfg.add_edges_from(for_edges)
 
         # The cblock has one ins at least
@@ -1788,11 +1679,7 @@ class controlFlowinator:
     def _expand_goto_block(self, block):
         """Expands a given `goto` block"""
 
-        # Remove the current's `goto` successor
-        # pointing to the next instruction
-        succ = self._get_block_successor(block)
-
-        if succ:
+        if succ := self._get_block_successor(block):
             self.i_cfg.remove_edge(block.index, succ)
 
         # Target is identified by its label number
@@ -1801,9 +1688,7 @@ class controlFlowinator:
 
         # Find the citem corresponding to that label
         target_citem = self.cf.find_label(target_label)
-        target_idx = target_citem.index
-
-        if target_idx:
+        if target_idx := target_citem.index:
             # goto -> target
             self.i_cfg.add_edge(block.index, target_idx)
 
@@ -1957,16 +1842,14 @@ class controlFlowinator:
         # and indirect function calls
         for co in self.calls:
             expr = co.expr
-            if hasattr(expr, 'x') and with_helpers:
-                if is_helper(expr.x):
-                    co.name = expr.x.helper
-                    co.is_helper = True
+            if hasattr(expr, 'x') and with_helpers and is_helper(expr.x):
+                co.name = expr.x.helper
+                co.is_helper = True
 
-            if hasattr(expr, 'x'):
-                if is_var(expr.x):
-                    v_name = ref2var(expr.x, c=self).name or "sub_indirect"
-                    co.name = v_name
-                    co.is_indirect = True
+            if hasattr(expr, 'x') and is_var(expr.x):
+                v_name = ref2var(expr.x, c=self).name or "sub_indirect"
+                co.name = v_name
+                co.is_indirect = True
 
     # ================================================================================
     # Debugging utilities
@@ -1977,12 +1860,12 @@ class controlFlowinator:
 
         print("[DEBUG] Dumping CFG")
         for u, v in self.i_cfg.edges():
-            print("{} -> {}".format(u, v))
+            print(f"{u} -> {v}")
 
         print("[DEBUG] Writing GraphML...")
         # Labeling the nodes
         for node in self.i_cfg.nodes():
-            self.i_cfg.node[node]['label'] = "{}".format(node)
+            self.i_cfg.node[node]['label'] = f"{node}"
 
         nx.write_graphml(self.i_cfg, r"D:\graphs\di.graphml")
 
@@ -1995,8 +1878,10 @@ class controlFlowinator:
         ``dot.exe -Tpng decompiled.dot -o decompiled.png``
         """
 
-        dot = "digraph D {\n"
-        dot += "node [shape=record style=rounded fontname=\"Sans serif\" fontsize=\"8\"];\n"
+        dot = (
+            "digraph D {\n"
+            + "node [shape=record style=rounded fontname=\"Sans serif\" fontsize=\"8\"];\n"
+        )
 
         # Labeling the nodes
         for node in self.g.nodes():
@@ -2020,9 +1905,7 @@ class controlFlowinator:
 
         # Adding edges
         for u, v in self.g.edges():
-            dot += "node_{} -> node_{};\n".format(
-                u.index,
-                v.index)
+            dot += f"node_{u.index} -> node_{v.index};\n"
 
         dot += "}\n"
 
@@ -2062,9 +1945,9 @@ def get_cfg_for_ea(ea, dot_exe, out_dir):
         png_file=os.path.join(out_dir, "decompiled.png"))
     cmd2 = os.path.join(out_dir, "decompiled.png")
 
-    print("Trying to run: {}...".format(cmd))
+    print(f"Trying to run: {cmd}...")
     os.system(cmd)
-    print("Trying to run: {}...".format(cmd2))
+    print(f"Trying to run: {cmd2}...")
     os.system(cmd2)
 
 
@@ -2115,16 +1998,13 @@ def create_comment(c=None, ea=0, comment=""):
     :rtype: bool
     """
 
-    if not c:
-        # No `controlFlowinator` object supplied
-        # We have to decompile manually
-        if ea:
-            cf = my_decompile(ea=ea)
-        else:
-            raise ValueError
-    else:
+    if c:
         cf = c.cf
 
+    elif ea:
+        cf = my_decompile(ea=ea)
+    else:
+        raise ValueError
     tl = treeloc_t()
     tl.ea = ea
     #for all cases see https://www.hex-rays.com/products/ida/support/idapython_docs/ida_hexrays-module.html

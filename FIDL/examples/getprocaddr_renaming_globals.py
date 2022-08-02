@@ -15,5 +15,5 @@ for co in callz:
     lhs = co.node.x
     if du.is_global_var(lhs):
         g_addr = du.value_of_global(lhs)
-        new_name = "g_ptr_{}".format(api_name)
+        new_name = f"g_ptr_{api_name}"
         set_name(g_addr, new_name, SN_CHECK)
